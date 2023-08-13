@@ -1,7 +1,6 @@
-use anyhow::Context;
+use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, trace, warn};
-use std::error::Error;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{self, Receiver};
@@ -46,10 +45,16 @@ impl WsHandler for BinanceWsHandler {
         "wss://stream.binance.com:9443/ws"
     }
 
+    /// Given symbol "ethbtc, produces: {"method": "SUBSCRIBE","params": ["ethbtc@depth10"],"id": 1}
     fn subscribe_msg(&self, symbol: &str) -> Option<String> {
-        Some(format!(
-            r#"{{"method": "SUBSCRIBE","params": ["{symbol}@depth10"],"id": 1}}"#
-        ))
+        Some(
+            serde_json::to_string(&BinanceReq {
+                method: "SUBSCRIBE",
+                params: vec![&format!("{symbol}@depth10")],
+                id: 1,
+            })
+            .expect("failed to serialize binance subscribe req"),
+        )
     }
 
     fn max_ping_roundtrip_ms(&self) -> u128 {
@@ -61,7 +66,7 @@ impl WsHandler for BinanceWsHandler {
             Ok(orderbook_msg) => {
                 let orderbook: Orderbook = orderbook_msg.try_into().map_err(|e| {
                     WsHandlerError::TranslateError(format!(
-                        "Could not translate msg: {msg} due to {e}"
+                        "could not translate msg: {msg} due to {e}"
                     ))
                 })?;
                 Ok(Some(orderbook))
@@ -84,10 +89,17 @@ impl WsHandler for BitstampWsHandler {
         "wss://ws.bitstamp.net"
     }
 
+    /// Given symbol "ethbtc, produces: {"event": "bts:subscribe","data": {"channel": "order_book_ethbtc"}}
     fn subscribe_msg(&self, symbol: &str) -> Option<String> {
-        Some(format!(
-            r#"{{"event": "bts:subscribe","data": {{"channel": "order_book_{symbol}"}}}}"#
-        ))
+        Some(
+            serde_json::to_string(&BitstampReq {
+                event: "bts:subscribe",
+                data: BitstampReqData {
+                    channel: &format!("order_book_{symbol}"),
+                },
+            })
+            .expect("failed to serialize bitstamp subscribe req"),
+        )
     }
 
     fn max_ping_roundtrip_ms(&self) -> u128 {
@@ -99,7 +111,7 @@ impl WsHandler for BitstampWsHandler {
             Ok(orderbook_msg) => {
                 let orderbook: Orderbook = orderbook_msg.try_into().map_err(|e| {
                     WsHandlerError::TranslateError(format!(
-                        "Could not translate msg: {msg} due to {e}"
+                        "could not translate msg: {msg} due to {e}"
                     ))
                 })?;
                 Ok(Some(orderbook))
@@ -137,7 +149,7 @@ pub async fn handle_exchange_feed(
     mut heartbeat_rx: Receiver<()>,
     downstream_tx: broadcast::Sender<ExchangeOrderbook>,
     control_tx: mpsc::Sender<Control>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let subscribe_msg = ws_handler.subscribe_msg(&eas.symbol);
     info!(
         "
@@ -161,7 +173,7 @@ max_ping_roundtrip_ms: {}
         ws_write
             .send(Message::Text(subscribe_msg.to_owned()))
             .await
-            .with_context(|| "Failed to write subscribe_msg")?;
+            .context("Failed to write subscribe_msg")?;
     }
 
     let mut ping_requested = UNIX_EPOCH;
@@ -175,9 +187,9 @@ max_ping_roundtrip_ms: {}
                 trace!("ping requested!");
                 if ping_requested > ping_acked {
                     debug!("Ping not ponged, propagating PingDurationExceeded");
-                    control_tx.send(Control::PingDurationExceeded).await.with_context(|| "Failed to send PingDurationExceeded")?;
+                    control_tx.send(Control::PingDurationExceeded).await.context("Failed to send PingDurationExceeded")?;
                 } else {
-                    ws_write.send(Message::Ping(b"ping".to_vec())).await.with_context(|| "Failed to send Ping")?;
+                    ws_write.send(Message::Ping(b"ping".to_vec())).await.context("Failed to send Ping")?;
                     ping_requested = SystemTime::now();
                 }
             }  // Send heartbeat

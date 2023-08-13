@@ -1,9 +1,9 @@
+use anyhow::Result;
 use clap::Parser;
 use log::{debug, error};
 use orderbook_aggregator::{
     get_ws_handler, handle_exchange_feed, publish, Control, ExchangeAndSymbol,
 };
-use std::error::Error;
 use std::process;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{self, Duration};
@@ -28,13 +28,13 @@ pub struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     let args = Args::parse();
     pretty_env_logger::init();
 
     let (heartbeat_tx, _) = broadcast::channel(1);
     let (control_tx, mut control_rx) = mpsc::channel(1);
-    let (downstream_tx, _) = broadcast::channel(1);
+    let (norm_orderbook_tx, _) = broadcast::channel(1);
 
     let _exchange_ws_handlers = args
         .exchange_and_symbol
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(1)
             });
 
-            let downstream_tx = downstream_tx.clone();
+            let downstream_tx = norm_orderbook_tx.clone();
             let admin_tx = control_tx.clone();
             let heartbeat_rx = heartbeat_tx.subscribe();
             tokio::spawn(async move {
@@ -91,6 +91,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let grpc_address = format!("[::]:{}", args.grpc_port);
-    publish::start_grpc_server(&grpc_address, args.orderbook_depth, downstream_tx).await?;
+    publish::start_grpc_server(&grpc_address, args.orderbook_depth, norm_orderbook_tx).await?;
     Ok(())
 }

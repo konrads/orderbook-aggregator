@@ -10,8 +10,12 @@ use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{transport::Server, Response, Status};
 
+/// Implementation of the OrderbookAggregator gRPC server.
+/// Receives normalized orderbooks from the websocket handlers and publishes consolidated orderbook updates to the subscribers.
+/// Updates are only issued if the consolidated update differs from the previous one.
+
 pub struct OrderbookAggregatorService {
-    subscribers: broadcast::Sender<ExchangeOrderbook>,
+    upstream_tx: broadcast::Sender<ExchangeOrderbook>,
     orderbook_depth: usize,
 }
 use log::{debug, info, trace};
@@ -24,7 +28,7 @@ impl OrderbookAggregator for OrderbookAggregatorService {
         &self,
         _: tonic::Request<Empty>,
     ) -> Result<Response<Self::BookSummaryStream>, Status> {
-        let mut receiver = self.subscribers.subscribe();
+        let mut receiver = self.upstream_tx.subscribe();
         let (tx, rx) = mpsc::channel(32);
 
         let orderbook_depth = self.orderbook_depth;
@@ -53,13 +57,13 @@ impl OrderbookAggregator for OrderbookAggregatorService {
 pub async fn start_grpc_server(
     socket_address: &str,
     orderbook_depth: usize,
-    tx: broadcast::Sender<ExchangeOrderbook>,
+    upstream_tx: broadcast::Sender<ExchangeOrderbook>,
 ) -> Result<(), anyhow::Error> {
     let addr = socket_address
         .parse()
         .with_context(|| format!("Cannot parse server socket address {socket_address}"))?;
     let orderbook_agg_service = OrderbookAggregatorService {
-        subscribers: tx,
+        upstream_tx,
         orderbook_depth,
     };
 
@@ -68,6 +72,6 @@ pub async fn start_grpc_server(
         .add_service(OrderbookAggregatorServer::new(orderbook_agg_service))
         .serve(addr)
         .await
-        .with_context(|| "Failed to start grpc server")?;
+        .context("Failed to start grpc server")?;
     Ok(())
 }

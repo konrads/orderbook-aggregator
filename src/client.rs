@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, info, warn};
 use tonic::transport::Channel;
@@ -21,22 +21,22 @@ pub struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     pretty_env_logger::init();
     let args = Args::parse();
 
     let channel = Channel::from_shared(args.server_address)
-        .with_context(|| "Invalid gRPC server address")?
+        .context("Invalid gRPC server address")?
         .connect()
         .await
-        .with_context(|| "Failed to establish server connection")?;
+        .context("Failed to establish server connection")?;
     let mut client =
         orderbook::orderbook_aggregator_client::OrderbookAggregatorClient::new(channel);
     let request = tonic::Request::new(orderbook::Empty {});
     let mut response = client
         .book_summary(request)
         .await
-        .with_context(|| "Failed to subscribe to gRPC server")?
+        .context("Failed to subscribe to gRPC server")?
         .into_inner();
 
     loop {
