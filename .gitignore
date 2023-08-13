@@ -1,0 +1,7 @@
+/target
+Cargo.lock
+# backups
+*.bk
+# for visual studio code backups
+* copy.*
+* copy\ *.*
