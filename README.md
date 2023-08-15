@@ -1,8 +1,8 @@
-# Orderbook consolidation service
+# Orderbook aggregation service
 
 [![build](../../workflows/build/badge.svg)](../../actions/workflows/build.yml)
 
-The Orderbook consolidation service is a Rust-based project that subscribes to different exchange feeds for specific symbol(s), consolidates into a single Orderbook and publishes via gRPC.
+The Orderbook aggregation service is a Rust-based project that subscribes to different exchange feeds for specific symbol(s), consolidates into a single Orderbook and publishes via gRPC.
 
 ## Initial investigation
 
@@ -120,8 +120,14 @@ RUST_LOG=info target/debug/client
 
 ## Testing
 
-- [x] Manual tests as described in the `Running` section. Visually inspected the data, ensured multiple clients receive the same gRPC feed
+Manual (as described in the `Running` section)
+
+- [x] Running of the server with multiple clients, visually inspected the data, ensured multiple clients receive the same gRPC feed
+- [x] Running of the server, cutting the network, ensuring the heartbeat timeouts kill the server
+
+Unit/functional:
+
 - [x] Mechanism to consolidate exchange orderbooks, order as per bids/asks ordering, take top _n_ bids/asks, publish if top _n_ bids/asks _if_ unchanged since last update
 - [x] Utility to fetch all Result Oks or return Err
-- [ ] WS interactions, via mocking
+- [x] WS interactions, via mocking
 - [ ] gRPC interactions, via mocking

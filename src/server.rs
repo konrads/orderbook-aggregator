@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::{debug, error};
 use orderbook_aggregator::{
-    get_ws_handler, handle_exchange_feed, publish, Control, ExchangeAndSymbol,
+    get_ws_handler, handle_exchange_feed, ops_ws::WSOpsImpl, publish, Control, ExchangeAndSymbol,
 };
 use std::process;
 use tokio::sync::{broadcast, mpsc};
@@ -17,7 +17,7 @@ use tokio::time::{self, Duration};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct Args {
+struct Args {
     pub exchange_and_symbol: Vec<ExchangeAndSymbol>,
     #[arg(long, default_value_t = 5000)]
     ping_interval_ms: u64,
@@ -49,16 +49,32 @@ async fn main() -> Result<()> {
             let admin_tx = control_tx.clone();
             let heartbeat_rx = heartbeat_tx.subscribe();
             tokio::spawn(async move {
-                handle_exchange_feed(&eas, ws_handler, heartbeat_rx, downstream_tx, admin_tx)
-                    .await
-                    .unwrap_or_else(|e| {
-                        error!(
-                            "Failed to start the websocket handler for exchange {} due to {}",
-                            eas.to_string(),
-                            e
-                        );
-                        process::exit(1)
-                    })
+                let mut ws_ops = WSOpsImpl::new(ws_handler.url()).await.unwrap_or_else(|e| {
+                    error!(
+                        "Failed to connect to websocket exchange {} due to {}",
+                        eas.to_string(),
+                        e
+                    );
+                    process::exit(1)
+                });
+
+                handle_exchange_feed(
+                    &eas,
+                    ws_handler,
+                    &mut ws_ops,
+                    heartbeat_rx,
+                    downstream_tx,
+                    admin_tx,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to start the websocket handler for exchange {} due to {}",
+                        eas.to_string(),
+                        e
+                    );
+                    process::exit(1)
+                })
             })
         })
         .collect::<Vec<_>>();

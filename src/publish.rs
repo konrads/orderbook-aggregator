@@ -4,6 +4,7 @@ use crate::orderbook::{
 };
 use crate::{consolidate, ExchangeOrderbook};
 use anyhow::Context;
+use log::{debug, info, trace};
 use std::pin::Pin;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -14,11 +15,10 @@ use tonic::{transport::Server, Response, Status};
 /// Receives normalized orderbooks from the websocket handlers and publishes consolidated orderbook updates to the subscribers.
 /// Updates are only issued if the consolidated update differs from the previous one.
 
-pub struct OrderbookAggregatorService {
+struct OrderbookAggregatorService {
     upstream_tx: broadcast::Sender<ExchangeOrderbook>,
     orderbook_depth: usize,
 }
-use log::{debug, info, trace};
 
 #[tonic::async_trait]
 impl OrderbookAggregator for OrderbookAggregatorService {

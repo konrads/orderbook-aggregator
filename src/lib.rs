@@ -1,16 +1,15 @@
 use anyhow::{Context, Result};
-use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, trace, warn};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::sync::mpsc;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-pub mod collect_till_first_error;
-pub mod consolidate;
+mod collect_till_first_error;
+mod consolidate;
+pub mod ops_ws;
 pub mod publish;
-pub mod types;
+mod types;
 use types::*;
 
 /// Functionality common to aggregator server.
@@ -131,7 +130,7 @@ pub struct ExchangeOrderbook {
     orderbook: Orderbook,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Control {
     PingDurationExceeded,
     Died(String),
@@ -146,6 +145,7 @@ pub enum Control {
 pub async fn handle_exchange_feed(
     eas: &ExchangeAndSymbol,
     ws_handler: &dyn WsHandler,
+    ws_ops: &mut dyn ops_ws::WSOps,
     mut heartbeat_rx: Receiver<()>,
     downstream_tx: broadcast::Sender<ExchangeOrderbook>,
     control_tx: mpsc::Sender<Control>,
@@ -165,13 +165,10 @@ max_ping_roundtrip_ms: {}
         &ws_handler.max_ping_roundtrip_ms()
     );
 
-    let (socket, _) = connect_async(ws_handler.url()).await?;
-    let (mut ws_write, mut ws_read) = socket.split();
-
     // Send subscribe command
     if let Some(subscribe_msg) = subscribe_msg {
-        ws_write
-            .send(Message::Text(subscribe_msg.to_owned()))
+        ws_ops
+            .write(Message::Text(subscribe_msg.to_owned()))
             .await
             .context("Failed to write subscribe_msg")?;
     }
@@ -189,11 +186,11 @@ max_ping_roundtrip_ms: {}
                     debug!("Ping not ponged, propagating PingDurationExceeded");
                     control_tx.send(Control::PingDurationExceeded).await.context("Failed to send PingDurationExceeded")?;
                 } else {
-                    ws_write.send(Message::Ping(b"ping".to_vec())).await.context("Failed to send Ping")?;
+                    ws_ops.write(Message::Ping(b"ping".to_vec())).await.context("Failed to send Ping")?;
                     ping_requested = SystemTime::now();
                 }
             }  // Send heartbeat
-            incoming = ws_read.next() => {
+            incoming = ws_ops.read() => {
                 match incoming {
                     Some(Ok(message)) => {
                         if let Message::Text(text) = message {
@@ -219,6 +216,8 @@ max_ping_roundtrip_ms: {}
                                 warn!("Ping-pong roundtrip duration exceed");
                                 control_tx.send(Control::PingDurationExceeded).await?;
                             }
+                        } else {
+                            warn!("Received unexpected message: {:?}", message);
                         }
                     }
                     Some(Err(e)) => {
@@ -286,6 +285,8 @@ impl ToString for ExchangeAndSymbol {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops_ws::WSOps;
+    use mockall::{mock, predicate::*};
 
     #[test]
     fn test_exchange_and_symbol_parsing_roundtrip() {
@@ -326,5 +327,87 @@ mod tests {
                 .to_string(),
             "No symbol specified"
         );
+    }
+
+    mock! {
+        pub TestWsHandler {}
+        impl WsHandler for TestWsHandler {
+            fn url(&self) -> &str;
+            fn subscribe_msg(&self, symbol: &str) -> Option<String>;
+            fn max_ping_roundtrip_ms(&self) -> u128;
+            fn handle_msg(&self, msg: &str) -> Result<Option<Orderbook>, WsHandlerError>;
+        }
+    }
+
+    mock! {
+        pub TestWsOps {}
+        #[tonic::async_trait]
+        impl WSOps for TestWsOps {
+            async fn read(&mut self) -> Option<Result<Message>>;
+            async fn write(&mut self, msg: Message) -> Result<()>;
+        }
+    }
+
+    fn sleep_ms(ms: u64) {
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_excessive_ping_pong() -> Result<()> {
+        let (heartbeat_tx, _) = broadcast::channel(100);
+        let (control_tx, mut control_rx) = mpsc::channel(100);
+        let (norm_orderbook_tx, _) = broadcast::channel(100);
+
+        let eas = ExchangeAndSymbol {
+            exchange: "binance".to_string(),
+            symbol: "BTCUSDT".to_string(),
+        };
+
+        let mut ws_handler = MockTestWsHandler::new();
+        ws_handler.expect_subscribe_msg().returning(|_| None);
+        ws_handler
+            .expect_max_ping_roundtrip_ms()
+            .returning(|| 50_u128);
+        ws_handler.expect_handle_msg().returning(|_| Ok(None));
+
+        let mut ws_ops = MockTestWsOps::new();
+        // firstly quick pong response, followed by slow
+        ws_ops.expect_read().times(1).returning(|| {
+            sleep_ms(10);
+            Some(Ok(Message::Pong(vec![])))
+        });
+        ws_ops.expect_read().returning(|| {
+            sleep_ms(80);
+            Some(Ok(Message::Pong(vec![])))
+        });
+        ws_ops.expect_write().returning(|_| Ok(()));
+
+        let heartbeat_rx2 = heartbeat_tx.subscribe();
+        tokio::spawn(async move {
+            handle_exchange_feed(
+                &eas,
+                &ws_handler,
+                &mut ws_ops,
+                heartbeat_rx2,
+                norm_orderbook_tx,
+                control_tx,
+            )
+            .await
+        });
+
+        // expect quick pong
+        heartbeat_tx.send(())?;
+        sleep_ms(60);
+        assert!(control_rx.try_recv().is_err());
+
+        // expect long pong, should trigger control message
+        heartbeat_tx.send(())?;
+        sleep_ms(60);
+        assert_eq!(
+            Control::PingDurationExceeded,
+            control_rx.recv().await.unwrap()
+        );
+
+        Ok(())
     }
 }
