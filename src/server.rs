@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
-use log::{debug, error};
+use futures_util::future;
+use log::debug;
 use orderbook_aggregator::{
     get_ws_handler, handle_exchange_feed, ops_ws::WSOpsImpl, publish, Control, ExchangeAndSymbol,
 };
@@ -36,26 +37,20 @@ async fn main() -> Result<()> {
     let (control_tx, mut control_rx) = mpsc::channel(1);
     let (norm_orderbook_tx, _) = broadcast::channel(1);
 
-    let _exchange_ws_handlers = args
+    // exchange WS handler tasks
+    let exchange_ws_handles = args
         .exchange_and_symbol
         .into_iter()
         .map(|eas: ExchangeAndSymbol| {
-            let ws_handler = get_ws_handler(&eas.exchange).unwrap_or_else(|| {
-                error!("Unsupported exchange {}", eas.exchange);
-                process::exit(1)
-            });
+            let ws_handler = get_ws_handler(&eas.exchange)
+                .unwrap_or_else(|| panic!("No handler for exchange {}", eas.exchange));
 
             let downstream_tx = norm_orderbook_tx.clone();
             let admin_tx = control_tx.clone();
             let heartbeat_rx = heartbeat_tx.subscribe();
             tokio::spawn(async move {
                 let mut ws_ops = WSOpsImpl::new(ws_handler.url()).await.unwrap_or_else(|e| {
-                    error!(
-                        "Failed to connect to websocket exchange {} due to {}",
-                        eas.to_string(),
-                        e
-                    );
-                    process::exit(1)
+                    panic!("Failed to connect to url {}: {}", ws_handler.url(), e)
                 });
 
                 handle_exchange_feed(
@@ -67,20 +62,13 @@ async fn main() -> Result<()> {
                     admin_tx,
                 )
                 .await
-                .unwrap_or_else(|e| {
-                    error!(
-                        "Failed to start the websocket handler for exchange {} due to {}",
-                        eas.to_string(),
-                        e
-                    );
-                    process::exit(1)
-                })
+                .unwrap_or_else(|e| panic!("WS handling error {e}"));
             })
         })
         .collect::<Vec<_>>();
 
-    // spawn periodic heartbeat schedule
-    tokio::spawn(async move {
+    // periodic heartbeat task
+    let heartbeat_handle = tokio::spawn(async move {
         let ping_interval = Duration::from_millis(args.ping_interval_ms);
         let mut interval = time::interval(ping_interval);
 
@@ -90,8 +78,8 @@ async fn main() -> Result<()> {
         }
     });
 
-    tokio::spawn(async move {
-        // process control messages
+    // control message handler task
+    let control_handle = tokio::spawn(async move {
         while let Some(control) = control_rx.recv().await {
             match control {
                 Control::Died(cause) => {
@@ -106,7 +94,16 @@ async fn main() -> Result<()> {
         }
     });
 
+    // grpc publisher task
     let grpc_address = format!("[::]:{}", args.grpc_port);
-    publish::start_grpc_server(&grpc_address, args.orderbook_depth, norm_orderbook_tx).await?;
-    Ok(())
+    let grpc_handle = tokio::spawn(async move {
+        publish::start_grpc_server(&grpc_address, args.orderbook_depth, norm_orderbook_tx)
+            .await
+            .unwrap()
+    });
+
+    // await finish of the first task, which will be due to an error that is propagated to the main
+    let mut all_handles = vec![heartbeat_handle, control_handle, grpc_handle];
+    all_handles.extend(exchange_ws_handles);
+    Ok(future::select_all(all_handles).await.0?)
 }

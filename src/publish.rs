@@ -43,7 +43,13 @@ impl OrderbookAggregator for OrderbookAggregatorService {
                 debug!("Received orderbook update from {exchange}: {orderbook:?}");
                 if let Some(summary) = consolidator.update(exchange, orderbook) {
                     debug!("Publishing summary: {summary:?}");
-                    let _ = tx.send(Ok(summary.clone())).await;
+                    match tx.send(Ok(summary.clone())).await {
+                        Ok(_) => (),
+                        Err(e) => {
+                            debug!("Failed to send summary due to {e}, cancelling subscription");
+                            break;
+                        }
+                    }
                 } else {
                     trace!("Orderbook update caused no summary update");
                 }
@@ -72,6 +78,5 @@ pub async fn start_grpc_server(
         .add_service(OrderbookAggregatorServer::new(orderbook_agg_service))
         .serve(addr)
         .await
-        .context("Failed to start grpc server")?;
-    Ok(())
+        .context("Failed to start grpc server")
 }

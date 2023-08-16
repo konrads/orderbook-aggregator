@@ -24,12 +24,6 @@ impl WSOpsImpl {
         let (ws_write, ws_read) = socket.split();
         Ok(WSOpsImpl { ws_write, ws_read })
     }
-
-    // pub fn writer(
-    //     &mut self,
-    // ) -> &mut dyn SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> {
-    //     &mut self.ws_write
-    // }
 }
 
 #[async_trait]
