@@ -43,12 +43,9 @@ impl OrderbookAggregator for OrderbookAggregatorService {
                 debug!("Received orderbook update from {exchange}: {orderbook:?}");
                 if let Some(summary) = consolidator.update(exchange, orderbook) {
                     debug!("Publishing summary: {summary:?}");
-                    match tx.send(Ok(summary.clone())).await {
-                        Ok(_) => (),
-                        Err(e) => {
-                            debug!("Failed to send summary due to {e}, cancelling subscription");
-                            break;
-                        }
+                    if let Err(e) = tx.send(Ok(summary.clone())).await {
+                        debug!("Failed to send summary due to {e}, cancelling subscription");
+                        break;
                     }
                 } else {
                     trace!("Orderbook update caused no summary update");
