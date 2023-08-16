@@ -3,7 +3,7 @@ use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(test, derive(Deserialize))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Orderbook {
     pub bids: Vec<Level>,
     pub asks: Vec<Level>,

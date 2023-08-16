@@ -353,6 +353,57 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_handler_flow() -> Result<()> {
+        let (heartbeat_tx, _) = broadcast::channel(100);
+        let (control_tx, _control_rx) = mpsc::channel(100);
+        let (norm_orderbook_tx, mut heartbeat_rx1) = broadcast::channel(100);
+
+        let eas = ExchangeAndSymbol {
+            exchange: "binance".to_string(),
+            symbol: "BTCUSDT".to_string(),
+        };
+
+        let mut ws_handler = MockTestWsHandler::new();
+        ws_handler.expect_subscribe_msg().returning(|_| None);
+        ws_handler
+            .expect_max_ping_roundtrip_ms()
+            .returning(|| 5000_u128); // 5s, but we're not testing heartbeat
+        ws_handler
+            .expect_handle_msg()
+            .returning(|_| Ok(Some(Orderbook::default())));
+
+        let mut ws_ops = MockTestWsOps::new();
+        ws_ops
+            .expect_read()
+            .times(3)
+            .returning(|| Some(Ok(Message::Text("--".to_owned()))));
+        ws_ops.expect_read().once().returning(|| None);
+
+        let heartbeat_rx2 = heartbeat_tx.subscribe();
+        tokio::spawn(async move {
+            handle_exchange_feed(
+                &eas,
+                &ws_handler,
+                &mut ws_ops,
+                heartbeat_rx2,
+                norm_orderbook_tx,
+                control_tx,
+            )
+            .await
+        });
+
+        // Drain the broadcast receiver into the Vec
+        let mut downstream_msgs = vec![];
+        while let Ok(message) = heartbeat_rx1.recv().await {
+            downstream_msgs.push(message);
+        }
+        // validate received messages
+        assert_eq!(3, downstream_msgs.len());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_excessive_ping_pong() -> Result<()> {
         let (heartbeat_tx, _) = broadcast::channel(100);
         let (control_tx, mut control_rx) = mpsc::channel(100);
@@ -372,7 +423,7 @@ mod tests {
 
         let mut ws_ops = MockTestWsOps::new();
         // firstly quick pong response, followed by slow
-        ws_ops.expect_read().times(1).returning(|| {
+        ws_ops.expect_read().once().returning(|| {
             sleep_ms(10);
             Some(Ok(Message::Pong(vec![])))
         });
