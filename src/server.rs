@@ -9,13 +9,7 @@ use std::process;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{self, Duration};
 
-/// The main entry point for the orderbook aggregator.
-/// It spawns:
-/// - websocket handler for each exchange and symbol pair
-/// - gRPC publisher to serve updates to consolidated orderbook
-/// - periodic heartbeat schedule to check if the websocket handlers are still alive
-/// - control message handler to eg. exit the process in case of websocket handler failure, excessively long pin-pong
-
+/// Server command line arguments.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -28,6 +22,12 @@ struct Args {
     grpc_port: u16,
 }
 
+/// The main entry point for the orderbook aggregator.
+/// It spawns:
+/// - websocket handler for each exchange and symbol pair
+/// - gRPC publisher to serve updates to consolidated orderbook
+/// - periodic heartbeat schedule to check if the websocket handlers are still alive
+/// - control message handler to eg. exit the process in case of websocket handler failure, excessively long pin-pong
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();

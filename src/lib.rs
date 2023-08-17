@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
-mod collect_till_first_error;
+pub mod collect_till_first_error;
 mod consolidate;
 pub mod ops_ws;
 pub mod publish;
@@ -125,7 +125,7 @@ impl WsHandler for BitstampWsHandler {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExchangeOrderbook {
+pub struct NormalizedOrderbook {
     exchange: String,
     orderbook: Orderbook,
 }
@@ -147,7 +147,7 @@ pub async fn handle_exchange_feed(
     ws_handler: &dyn WsHandler,
     ws_ops: &mut dyn ops_ws::WSOps,
     mut heartbeat_rx: Receiver<()>,
-    downstream_tx: broadcast::Sender<ExchangeOrderbook>,
+    downstream_tx: broadcast::Sender<NormalizedOrderbook>,
     control_tx: mpsc::Sender<Control>,
 ) -> Result<()> {
     let subscribe_msg = ws_handler.subscribe_msg(&eas.symbol);
@@ -197,7 +197,7 @@ max_ping_roundtrip_ms: {}
                             match ws_handler.handle_msg(&text) {
                                 Ok(Some(orderbook)) => {
                                     trace!("{}: sending orderbook: {:?}", eas.to_string(), orderbook);
-                                    let _ = downstream_tx.send(ExchangeOrderbook{ exchange: eas.exchange.clone(), orderbook }); // ignore failure, due to lack of subscribers
+                                    let _ = downstream_tx.send(NormalizedOrderbook{ exchange: eas.exchange.clone(), orderbook }); // ignore failure, due to lack of subscribers
                                 }
                                 Ok(None) => {} // ignore
                                 Err(e) => {
@@ -236,6 +236,7 @@ max_ping_roundtrip_ms: {}
     Ok(())
 }
 
+/// Select WS handler out of the available implementations.
 pub fn get_ws_handler(exchange: &str) -> Option<&'static dyn WsHandler> {
     match exchange {
         "binance" => Some(&BinanceWsHandler),
@@ -356,7 +357,7 @@ mod tests {
     async fn test_handler_flow() -> Result<()> {
         let (heartbeat_tx, _) = broadcast::channel(100);
         let (control_tx, _control_rx) = mpsc::channel(100);
-        let (norm_orderbook_tx, mut heartbeat_rx1) = broadcast::channel(100);
+        let (norm_orderbook_tx, mut norm_orderbook_rx) = broadcast::channel(100);
 
         let eas = ExchangeAndSymbol {
             exchange: "binance".to_string(),
@@ -394,7 +395,7 @@ mod tests {
 
         // Drain the broadcast receiver into the Vec
         let mut downstream_msgs = vec![];
-        while let Ok(message) = heartbeat_rx1.recv().await {
+        while let Ok(message) = norm_orderbook_rx.recv().await {
             downstream_msgs.push(message);
         }
         // validate received messages

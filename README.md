@@ -2,11 +2,11 @@
 
 [![build](../../workflows/build/badge.svg)](../../actions/workflows/build.yml)
 
-The Orderbook aggregation service is a Rust-based project that subscribes to different exchange feeds for specific symbol(s), consolidates into a single Orderbook and publishes via gRPC.
+The Orderbook aggregation service is a Rust-based project that subscribes to multiple exchange Orderbook feeds, consolidate them and publishes via gRPC.
 
 ## Initial investigation
 
-To support Binance and Bitstamp exchanges, `wscat` was used to query interactions, responses and streamed data. This provided blueprints for [src/types.rs](src/types.rs).
+In order to support Binance and Bitstamp exchanges, `wscat` was used to query interactions, responses and streamed data. This provided blueprint for [src/types.rs](src/types.rs).
 
 Binance
 
@@ -36,10 +36,10 @@ wscat -c wss://ws.bitstamp.net
 
 The server spawns and orchestrates following independent tasks:
 
-- multiple exchange WS stream handlers. Each handler subscribes to an Orderboook stream, normalizes received Orderbook, and passes them downstream. It also listens to a `heartbeat` topic, issuing pings to the exchange. Should error occur, or ping-pong duration exceeds a limit (eg. due to loss of network connectivity), the handler sends a message to `control` channel.
-- heartbeat issuing task, sending heartbeats requests to all WS stream handlers
-- `control` message handler, killing the program when errors occur. Process restarts is left to external service/daemon management systems
+- multiple exchange WS handlers. Each handler subscribes to an Orderboook stream, normalizes received Orderbook, and passes it downstream. It also listens to a `heartbeat` topic, issuing pings to the exchange. Should an error occur, or ping-pong duration exceeds a limit (eg. due to loss of network connectivity), the handler sends a message to `control` channel.
 - gRPC publisher, receives normalized Orderbooks, consolidates, trims to last N bids/asks, calculates spread. If the consolidated Orderbook differs from the previous - publishes onto gRPC
+- heartbeat issuing task, sending heartbeats requests to all WS stream handlers
+- `control` message handler, killing the program when errors occur. Process restart is left to external service/daemon management systems
 
 The server accepts command line arguments:
 
@@ -48,7 +48,7 @@ The server accepts command line arguments:
 - `grpc_port`
 - positional argument that is a list of `<exchange>:<symbol>`. Exchange must be 1 of the supported `binance`, `bitstamp`, and the symbol must be supported by the exchange.
 
-The client subscribes to gRPC connection and prints out the received messages in either `struct` or `json` format. There can be multiple clients connecting to the single server.
+The client subscribes to gRPC connection and prints out the received messages in either `struct` or `json` format. There can be multiple clients subscribing to the single server gRPC feed.
 
 ```mermaid
 sequenceDiagram
@@ -106,7 +106,7 @@ sequenceDiagram
     end
 ```
 
-## Running
+## Run
 
 ```sh
 cargo build
@@ -118,7 +118,7 @@ RUST_LOG=info target/debug/server binance:ethbtc bitstamp:ethbtc
 RUST_LOG=info target/debug/client
 ```
 
-## Testing
+## Test
 
 Manual (as described in the `Running` section)
 
@@ -129,5 +129,9 @@ Unit/functional:
 
 - [x] Mechanism to consolidate exchange orderbooks, order as per bids/asks ordering, take top _n_ bids/asks, publish if top _n_ bids/asks _if_ unchanged since last update
 - [x] Utility to fetch all Result Oks or return Err
+- [x] gRPC interactions
 - [x] WS interactions, via mocking
-- [ ] gRPC interactions, via mocking
+
+## Potential improvements
+
+- if precision is more of a requirement than speed, consider [rust_decimal](https://docs.rs/rust_decimal/latest/rust_decimal) for calculations and output representations. Would need to work with serde/proto serialization/deserialization

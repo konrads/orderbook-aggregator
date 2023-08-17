@@ -2,7 +2,7 @@ use super::orderbook;
 use crate::types::Orderbook;
 use std::collections::HashMap;
 
-/// Mechanism for consolidating orderbooks from multiple exchanges.
+/// Mechanism for consolidating Orderbooks from multiple exchanges.
 /// Restricts the number of levels to the top N bids and asks.
 /// Publishes only if the summary has changed.
 pub struct Consolidator {
@@ -78,7 +78,7 @@ mod tests {
     use super::*;
     use crate::types;
 
-    fn update(
+    fn validate_update(
         consolidator: &mut Consolidator,
         exchange: &str,
         orderbook: &str,
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn test_update() {
         let mut consolidator = Consolidator::new(2);
-        update(
+        validate_update(
             &mut consolidator,
             "binance",
             r#"{"bids": [{"price": 6.0, "amount": 6.0}, {"price": 4.0, "amount": 4.0}, {"price": 5.0, "amount": 5.0}], "asks": [{"price": 7.0, "amount": 7.0}, {"price": 9.0, "amount": 9.0}, {"price": 8.0, "amount": 8.0}]}"#,
@@ -106,7 +106,7 @@ mod tests {
         );
 
         // repeat of the top 2
-        update(
+        validate_update(
             &mut consolidator,
             "binance",
             r#"{"bids": [{"price": 6.0, "amount": 6.0}, {"price": 3.0, "amount": 3.0}, {"price": 5.0, "amount": 5.0}], "asks": [{"price": 7.0, "amount": 7.0}, {"price": 99.0, "amount": 99.0}, {"price": 8.0, "amount": 8.0}]}"#,
@@ -114,7 +114,7 @@ mod tests {
         );
 
         // add bitstamp, add bids/asks with the same price,
-        update(
+        validate_update(
             &mut consolidator,
             "bitstamp",
             r#"{"bids": [{"price": 6.0, "amount": 60.0}, {"price": 3.0, "amount": 3.0}, {"price": 5.0, "amount": 5.0}], "asks": [{"price": 7.0, "amount": 3.5}, {"price": 99.0, "amount": 99.0}, {"price": 8.0, "amount": 8.0}]}"#,
@@ -124,7 +124,7 @@ mod tests {
         );
 
         // add binance, squeeze out last orders, put in cross (-ve spread)
-        update(
+        validate_update(
             &mut consolidator,
             "binance",
             r#"{"bids": [{"price": 7.0, "amount": 70.0}, {"price": 3.0, "amount": 3.0}, {"price": 5.0, "amount": 5.0}], "asks": [{"price": 6.5, "amount": 6.5}, {"price": 99.0, "amount": 99.0}, {"price": 8.0, "amount": 8.0}]}"#,

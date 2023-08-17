@@ -1,5 +1,12 @@
-/// Collects all items from an iterator until the first error is encountered.
-
+/// Extension trait for Iterators to collect all items, or return first error.
+///
+/// # Example
+/// ```
+/// # use orderbook_aggregator::collect_till_first_error::CollectTillFirstError;
+/// let v = vec![Ok(1), Err("error"), Ok(3)];
+/// let result = v.into_iter().collect_till_first_error();
+/// assert_eq!(result, Err("error"));
+/// ```
 pub trait CollectTillFirstError<X, E> {
     fn collect_till_first_error(self) -> Result<Vec<X>, E>;
 }
@@ -8,6 +15,7 @@ impl<I, X, E> CollectTillFirstError<X, E> for I
 where
     I: Iterator<Item = Result<X, E>>,
 {
+    /// Collects either a Vec of X, or the first E.
     fn collect_till_first_error(self) -> Result<Vec<X>, E> {
         let mut result = Vec::new();
         for item in self {

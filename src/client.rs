@@ -3,14 +3,11 @@ use clap::Parser;
 use log::{debug, info, warn};
 use tonic::transport::Channel;
 
-/// Entrypoint for the orderbook aggregator client.
-/// It connects to the gRPC server and prints the received summaries.
-/// It can print the summaries as JSON or as a struct, defaulting is JSON.
-
 mod orderbook {
     tonic::include_proto!("orderbook");
 }
 
+/// Client command line arguments.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
@@ -20,6 +17,9 @@ pub struct Args {
     as_struct: bool,
 }
 
+/// Entrypoint for the orderbook aggregator client.
+/// Connects to the gRPC server and prints the received summaries.
+/// Can print the summaries as JSON or as a struct, defaulting is JSON.
 #[tokio::main]
 async fn main() -> Result<()> {
     pretty_env_logger::init();

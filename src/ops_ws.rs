@@ -5,7 +5,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tonic::async_trait;
 
-/// Mockable websocket operations.
+/// Websocket operations, useful for mocking.
 
 #[async_trait]
 pub trait WSOps: Send + Sync {
