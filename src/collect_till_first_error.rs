@@ -3,9 +3,17 @@
 /// # Example
 /// ```
 /// # use orderbook_aggregator::collect_till_first_error::CollectTillFirstError;
-/// let v = vec![Ok(1), Err("error"), Ok(3)];
-/// let result = v.into_iter().collect_till_first_error();
-/// assert_eq!(result, Err("error"));
+/// // success scenario
+/// assert_eq!(
+///   Ok(vec![1, 2, 3]),
+///   vec![Ok::<i32, String>(1), Ok(2), Ok(3)].into_iter().collect_till_first_error()
+/// );
+///
+/// // returns first encountered error
+/// assert_eq!(
+///   Err("error"),
+///   vec![Ok(1), Err("error"), Err("error2")].into_iter().collect_till_first_error()
+/// );
 /// ```
 pub trait CollectTillFirstError<X, E> {
     fn collect_till_first_error(self) -> Result<Vec<X>, E>;
