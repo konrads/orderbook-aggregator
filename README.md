@@ -135,3 +135,4 @@ Unit/functional:
 ## Potential improvements
 
 - if precision is more of a requirement than speed, consider [rust_decimal](https://docs.rs/rust_decimal/latest/rust_decimal) for calculations and output representations. Would need to work with serde/proto serialization/deserialization
+- currently death of a single WS listener brings the entire program down, could instead attempt to re-connect and continue serving feed from the other WS listener

@@ -107,7 +107,7 @@ mod tests {
         });
 
         // wait for the publisher inner spawn to succeed
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         norm_orderbook_tx
             .send(NormalizedOrderbook {
@@ -117,16 +117,22 @@ mod tests {
                         price: 1.0,
                         amount: 1.0,
                     }],
-                    asks: vec![Level {
-                        price: 1.1,
-                        amount: 1.1,
-                    }],
+                    asks: vec![
+                        Level {
+                            price: 1.1,
+                            amount: 1.1,
+                        },
+                        Level {
+                            price: 2.1,
+                            amount: 2.1,
+                        },
+                    ],
                 },
             })
             .unwrap();
 
         let summary: Summary = handle.await.unwrap();
         assert_eq!(summary.bids.len(), 1);
-        assert_eq!(summary.asks.len(), 1);
+        assert_eq!(summary.asks.len(), 2);
     }
 }
