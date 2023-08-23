@@ -21,6 +21,7 @@ impl Consolidator {
     }
 
     /// Update with exchange orderbook, return summary if changed.
+    /// Should either bids or asks be empty, the spread is set to f64::MAX.
     pub fn update(
         &mut self,
         exchange: String,
@@ -59,9 +60,10 @@ impl Consolidator {
         });
         let bids = bids.into_iter().take(self.depth).collect::<Vec<_>>();
         let asks = asks.into_iter().take(self.depth).collect::<Vec<_>>();
-        let spread = match (bids.first(), asks.first()) {
-            (Some(bid), Some(ask)) => ask.price - bid.price,
-            _ => 0.0,
+        let spread = if let (Some(best_bid), Some(best_ask)) = (bids.first(), asks.first()) {
+            best_ask.price - best_bid.price
+        } else {
+            f64::MAX
         };
         let summary = orderbook::Summary { spread, bids, asks };
         if summary == self.latest {
@@ -91,6 +93,62 @@ mod tests {
             .update(exchange.to_string(), orderbook)
             .map(|x| x.clone());
         assert_eq!(exp_summary, summary);
+    }
+
+    #[test]
+    fn test_no_updates() {
+        let mut consolidator = Consolidator::new(2);
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [{"price": 4.0, "amount": 4.0}], "asks": [{"price": 5.0, "amount": 5.0}]}"#,
+            Some(
+                r#"{"spread": 1.0, "bids": [{"exchange": "binance", "price": 4.0, "amount": 4.0}], "asks": [{"exchange": "binance", "price": 5.0, "amount": 5.0}]}"#,
+            ),
+        );
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [{"price": 4.0, "amount": 4.0}], "asks": [{"price": 5.0, "amount": 5.0}]}"#,
+            None,
+        );
+    }
+
+    /// Ensures spread is MAX when there are no bids/asks.
+    #[test]
+    fn test_empty_bids_asks() {
+        let mut consolidator = Consolidator::new(2);
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [], "asks": []}"#,
+            Some(r#"{"spread": 1.7976931348623157e308, "bids": [], "asks": []}"#),
+        );
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [{"price": 5.0, "amount": 5.0}], "asks": []}"#,
+            Some(
+                r#"{"spread": 1.7976931348623157e308, "bids": [{"exchange": "binance", "price": 5.0, "amount": 5.0}], "asks": []}"#,
+            ),
+        );
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [], "asks": [{"price": 5.0, "amount": 5.0}]}"#,
+            Some(
+                r#"{"spread": 1.7976931348623157e308, "bids": [], "asks": [{"exchange": "binance", "price": 5.0, "amount": 5.0}]}"#,
+            ),
+        );
+        // expect non-MAX spread
+        validate_update(
+            &mut consolidator,
+            "binance",
+            r#"{"bids": [{"price": 4.0, "amount": 4.0}], "asks": [{"price": 5.0, "amount": 5.0}]}"#,
+            Some(
+                r#"{"spread": 1.0, "bids": [{"exchange": "binance", "price": 4.0, "amount": 4.0}], "asks": [{"exchange": "binance", "price": 5.0, "amount": 5.0}]}"#,
+            ),
+        );
     }
 
     #[test]
