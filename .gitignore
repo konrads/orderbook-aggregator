@@ -5,3 +5,4 @@ Cargo.lock
 # for visual studio code backups
 * copy.*
 * copy\ *.*
+coverage
