@@ -24,4 +24,4 @@ jobs:
       - name: Test
         run: cargo test  --verbose
       - name: Test with code coverage
-        run: make setup-coverage test-with-coverage markdown-coverage-report check-markdown-coverage-threshold
+        run: make validate-coverage
