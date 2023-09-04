@@ -21,7 +21,5 @@ jobs:
         run: cargo build --verbose
       - name: Clippy
         run: cargo clippy --verbose -- -D warnings
-      - name: Test
-        run: cargo test  --verbose
       - name: Test with code coverage
         run: make validate-coverage
