@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use log::{debug, info, warn};
 use tonic::transport::Channel;
+use tracing::{debug, info, warn};
 
 mod orderbook {
     tonic::include_proto!("orderbook");
@@ -47,14 +47,14 @@ async fn main() -> Result<()> {
                 } else {
                     serde_json::to_string(&summary)?
                 };
-                info!("Received summary: {render}");
+                info!(render, "Received summary");
             }
             Ok(None) => {
                 warn!("Received EOS, closing");
                 break;
             }
             Err(e) => {
-                debug!("Exiting due to error: {e}");
+                debug!(err = ?e, "Exiting due to error");
                 break;
             }
         }

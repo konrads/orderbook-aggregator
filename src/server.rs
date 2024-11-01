@@ -1,13 +1,12 @@
-use anyhow::Result;
 use clap::Parser;
 use futures_util::future;
-use log::debug;
 use orderbook_aggregator::{
     get_ws_handler, handle_exchange_feed, ops_ws::WSOpsImpl, publish, Control, ExchangeAndSymbol,
 };
 use std::process;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{self, Duration};
+use tracing::debug;
 
 /// Server command line arguments.
 #[derive(Parser, Debug)]
@@ -29,7 +28,7 @@ struct Args {
 /// - periodic heartbeat schedule to check if the websocket handlers are still alive
 /// - control message handler to eg. exit the process in case of websocket handler failure, excessively long pin-pong
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     pretty_env_logger::init();
 
@@ -83,7 +82,7 @@ async fn main() -> Result<()> {
         while let Some(control) = control_rx.recv().await {
             match control {
                 Control::Died(cause) => {
-                    debug!("Exiting due to {cause}");
+                    debug!(cause, "Exiting");
                     process::exit(1)
                 }
                 Control::PingDurationExceeded => {

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -9,8 +9,8 @@ use tonic::async_trait;
 
 #[async_trait]
 pub trait WSOps: Send + Sync {
-    async fn read(&mut self) -> Option<Result<Message>>;
-    async fn write(&mut self, msg: Message) -> Result<()>;
+    async fn read(&mut self) -> Option<anyhow::Result<Message>>;
+    async fn write(&mut self, msg: Message) -> anyhow::Result<()>;
 }
 
 pub struct WSOpsImpl {
@@ -19,7 +19,7 @@ pub struct WSOpsImpl {
 }
 
 impl WSOpsImpl {
-    pub async fn new(url: &str) -> Result<Self> {
+    pub async fn new(url: &str) -> anyhow::Result<Self> {
         let (socket, _) = connect_async(url).await?;
         let (ws_write, ws_read) = socket.split();
         Ok(WSOpsImpl { ws_write, ws_read })
@@ -28,14 +28,14 @@ impl WSOpsImpl {
 
 #[async_trait]
 impl WSOps for WSOpsImpl {
-    async fn read(&mut self) -> Option<Result<Message>> {
+    async fn read(&mut self) -> Option<anyhow::Result<Message>> {
         self.ws_read
             .next()
             .await
             .map(|x| x.context("read_ws failure"))
     }
 
-    async fn write(&mut self, msg: Message) -> Result<()> {
+    async fn write(&mut self, msg: Message) -> anyhow::Result<()> {
         self.ws_write.send(msg).await.context("write_ws failure")
     }
 }

@@ -1,10 +1,11 @@
-use anyhow::{Context, Result};
-use log::{debug, error, info, trace, warn};
+use anyhow::Context;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
+use tracing::{debug, error, info, trace, warn};
+
 pub mod collect_till_first_error;
 mod consolidate;
 pub mod ops_ws;
@@ -72,7 +73,7 @@ impl WsHandler for BinanceWsHandler {
             }
             Err(_e) => {
                 let resp = serde_json::from_str::<BinanceResp>(msg)?;
-                info!("Received expected response: {:?}", resp);
+                info!(response = ?resp, "Received expected response");
                 Ok(None)
             }
         }
@@ -117,7 +118,7 @@ impl WsHandler for BitstampWsHandler {
             }
             Err(_e) => {
                 let resp = serde_json::from_str::<BitstampResp>(msg)?;
-                info!("Received expected response: {:?}", resp);
+                info!(response = ?resp, "Received expected");
                 Ok(None)
             }
         }
@@ -149,7 +150,7 @@ pub async fn handle_exchange_feed(
     mut heartbeat_rx: Receiver<()>,
     downstream_tx: broadcast::Sender<NormalizedOrderbook>,
     control_tx: mpsc::Sender<Control>,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     let subscribe_msg = ws_handler.subscribe_msg(&eas.symbol);
     info!(
         "
@@ -196,7 +197,7 @@ max_ping_roundtrip_ms: {}
                         if let Message::Text(text) = message {
                             match ws_handler.handle_msg(&text) {
                                 Ok(Some(orderbook)) => {
-                                    trace!("{}: sending orderbook: {:?}", eas.to_string(), orderbook);
+                                    trace!(?orderbook, "{}: sending orderbook", eas.to_string());
                                     let _ = downstream_tx.send(NormalizedOrderbook{ exchange: eas.exchange.clone(), orderbook }); // ignore failure, due to lack of subscribers
                                 }
                                 Ok(None) => {} // ignore
@@ -206,22 +207,22 @@ max_ping_roundtrip_ms: {}
                                 }
                             }
                         } else if let Message::Ping(body) = message {
-                            trace!("Received ping: {:?}", body);
+                            trace!(?body, "Received ping");
                         } else if let Message::Pong(_) = message {
                             ping_acked = SystemTime::now();
                             let ping_duration = ping_acked.duration_since(ping_requested);
-                            debug!("Received pong, duration since last ping: {:?}", ping_duration);
+                            debug!(?ping_duration, "Received pong, duration since last ping");
                             let ping_duration_ms = ping_duration.expect("Negative ping duration").as_millis();
                             if ping_duration_ms > ws_handler.max_ping_roundtrip_ms() {
                                 warn!("Ping-pong roundtrip duration exceed");
                                 control_tx.send(Control::PingDurationExceeded).await?;
                             }
                         } else {
-                            warn!("Received unexpected message: {:?}", message);
+                            warn!(?message, "Received unexpected message");
                         }
                     }
                     Some(Err(e)) => {
-                        warn!("Error reading message: {}", e);
+                        warn!(err = ?e, "Error reading message");
                     }
                     None => {
                         warn!("Stream closed");
@@ -344,8 +345,8 @@ mod tests {
         pub TestWsOps {}
         #[tonic::async_trait]
         impl WSOps for TestWsOps {
-            async fn read(&mut self) -> Option<Result<Message>>;
-            async fn write(&mut self, msg: Message) -> Result<()>;
+            async fn read(&mut self) -> Option<anyhow::Result<Message>>;
+            async fn write(&mut self, msg: Message) -> anyhow::Result<()>;
         }
     }
 
@@ -354,7 +355,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_handler_flow() -> Result<()> {
+    async fn test_handler_flow() -> anyhow::Result<()> {
         let (heartbeat_tx, _) = broadcast::channel(100);
         let (control_tx, _control_rx) = mpsc::channel(100);
         let (norm_orderbook_tx, mut norm_orderbook_rx) = broadcast::channel(100);
@@ -405,7 +406,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_excessive_ping_pong() -> Result<()> {
+    async fn test_excessive_ping_pong() -> anyhow::Result<()> {
         let (heartbeat_tx, _) = broadcast::channel(100);
         let (control_tx, mut control_rx) = mpsc::channel(100);
         let (norm_orderbook_tx, _) = broadcast::channel(100);

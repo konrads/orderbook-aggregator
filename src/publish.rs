@@ -4,12 +4,12 @@ use crate::orderbook::{
 };
 use crate::{consolidate, NormalizedOrderbook};
 use anyhow::Context;
-use log::{debug, info, trace};
 use std::pin::Pin;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{transport::Server, Response, Status};
+use tracing::{debug, info, trace};
 
 /// Implementation of the OrderbookAggregator gRPC server.
 /// Receives normalized Orderbooks from the websocket handlers and publishes consolidated orderbook updates to the subscribers.
@@ -40,11 +40,11 @@ impl OrderbookAggregator for OrderbookAggregatorService {
                 orderbook,
             }) = upstream_rx.recv().await
             {
-                debug!("Received orderbook update from {exchange}: {orderbook:?}");
+                debug!(exchange, ?orderbook, "Received orderbook update");
                 if let Some(summary) = consolidator.update(exchange, orderbook) {
-                    debug!("Publishing summary: {summary:?}");
+                    debug!(?summary, "Publishing summary");
                     if let Err(e) = downstream_tx.send(Ok(summary.clone())).await {
-                        debug!("Failed to send summary due to {e}, cancelling subscription");
+                        debug!(err = ?e, "Failed to send summary, cancelling subscription");
                         break;
                     }
                 } else {

@@ -1,5 +1,4 @@
 use super::collect_till_first_error::CollectTillFirstError;
-use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(test, derive(Deserialize))]
@@ -38,7 +37,7 @@ pub struct BinanceResp {
 }
 
 impl TryInto<Orderbook> for OrderbookMsg<'_> {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Orderbook, Self::Error> {
         let bids = self
@@ -66,7 +65,7 @@ impl TryInto<Orderbook> for OrderbookMsg<'_> {
 }
 
 impl TryInto<Orderbook> for BitstampOrderbookMsg<'_> {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Orderbook, Self::Error> {
         let bids = self
