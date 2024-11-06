@@ -1,6 +1,6 @@
 use super::orderbook;
 use crate::types::Orderbook;
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 /// Mechanism for consolidating Orderbooks from multiple exchanges.
 /// Restricts the number of levels to the top N bids and asks.
@@ -43,20 +43,12 @@ impl Consolidator {
             }));
         }
         bids.sort_by(|x, y| match y.price.partial_cmp(&x.price) {
-            Some(std::cmp::Ordering::Greater) => std::cmp::Ordering::Greater,
-            Some(std::cmp::Ordering::Less) => std::cmp::Ordering::Less,
-            _ => y
-                .amount
-                .partial_cmp(&x.amount)
-                .unwrap_or(std::cmp::Ordering::Equal),
+            Some(o @ (Ordering::Greater | Ordering::Less)) => o,
+            _ => y.amount.partial_cmp(&x.amount).unwrap_or(Ordering::Equal),
         });
         asks.sort_by(|x, y| match x.price.partial_cmp(&y.price) {
-            Some(std::cmp::Ordering::Greater) => std::cmp::Ordering::Greater,
-            Some(std::cmp::Ordering::Less) => std::cmp::Ordering::Less,
-            _ => y
-                .amount
-                .partial_cmp(&x.amount)
-                .unwrap_or(std::cmp::Ordering::Equal),
+            Some(o @ (Ordering::Greater | Ordering::Less)) => o,
+            _ => y.amount.partial_cmp(&x.amount).unwrap_or(Ordering::Equal),
         });
         let bids = bids.into_iter().take(self.depth).collect::<Vec<_>>();
         let asks = asks.into_iter().take(self.depth).collect::<Vec<_>>();

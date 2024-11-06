@@ -1,5 +1,7 @@
 /// Extension trait for Iterators to collect all items, or return first error.
 ///
+/// Note: deprecated, as can simply do: `.collect::<Result<Vec<_>, _>>()?`
+///
 /// # Example
 /// ```
 /// # use orderbook_aggregator::collect_till_first_error::CollectTillFirstError;

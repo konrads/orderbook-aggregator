@@ -1,6 +1,9 @@
 use anyhow::Context;
-use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fmt,
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
@@ -142,6 +145,7 @@ pub enum Control {
 /// The control messages are:
 /// - PingDurationExceeded: the ping-pong roundtrip duration exceeded the max_ping_roundtrip_ms
 /// - Died: the websocket handler died due to an error
+///
 /// The heartbeat_rx is used to request a ping-pong roundtrip.
 pub async fn handle_exchange_feed(
     eas: &ExchangeAndSymbol,
@@ -278,9 +282,9 @@ impl FromStr for ExchangeAndSymbol {
     }
 }
 
-impl ToString for ExchangeAndSymbol {
-    fn to_string(&self) -> String {
-        format!("{}:{}", self.exchange, self.symbol)
+impl fmt::Display for ExchangeAndSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.exchange, self.symbol)
     }
 }
 

@@ -1,4 +1,3 @@
-use super::collect_till_first_error::CollectTillFirstError;
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(test, derive(Deserialize))]
@@ -31,6 +30,7 @@ pub struct BinanceReq<'a> {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct BinanceResp {
     pub result: Option<bool>,
     pub id: u32,
@@ -49,7 +49,7 @@ impl TryInto<Orderbook> for OrderbookMsg<'_> {
                     amount: amount_str.parse::<f64>()?,
                 })
             })
-            .collect_till_first_error()?;
+            .collect::<Result<Vec<_>, _>>()?;
         let asks = self
             .asks
             .into_iter()
@@ -59,7 +59,7 @@ impl TryInto<Orderbook> for OrderbookMsg<'_> {
                     amount: amount_str.parse::<f64>()?,
                 })
             })
-            .collect_till_first_error()?;
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Orderbook { bids, asks })
     }
 }
@@ -78,7 +78,7 @@ impl TryInto<Orderbook> for BitstampOrderbookMsg<'_> {
                     amount: amount_str.parse::<f64>()?,
                 })
             })
-            .collect_till_first_error()?;
+            .collect::<Result<Vec<_>, _>>()?;
         let asks = self
             .data
             .asks
@@ -89,7 +89,7 @@ impl TryInto<Orderbook> for BitstampOrderbookMsg<'_> {
                     amount: amount_str.parse::<f64>()?,
                 })
             })
-            .collect_till_first_error()?;
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Orderbook { bids, asks })
     }
 }
@@ -108,6 +108,7 @@ pub struct BitstampReqData<'a> {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct BitstampResp<'a> {
     #[serde(borrow)]
     pub event: &'a str,

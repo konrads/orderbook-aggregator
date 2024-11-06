@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
 
     // control message handler task
     let control_handle = tokio::spawn(async move {
-        while let Some(control) = control_rx.recv().await {
+        if let Some(control) = control_rx.recv().await {
             match control {
                 Control::Died(cause) => {
                     debug!(cause, "Exiting");
@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Control::PingDurationExceeded => {
                     debug!("Exiting due to PingDurationExceeded");
-                    process::exit(1)
+                    process::exit(2)
                 }
             }
         }
