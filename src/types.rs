@@ -96,23 +96,19 @@ impl TryInto<Orderbook> for BitstampOrderbookMsg<'_> {
 
 #[derive(Debug, Serialize)]
 pub struct BitstampReq<'a> {
-    #[serde(borrow)]
     pub event: &'a str,
     pub data: BitstampReqData<'a>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct BitstampReqData<'a> {
-    #[serde(borrow)]
     pub channel: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct BitstampResp<'a> {
-    #[serde(borrow)]
     pub event: &'a str,
-    #[serde(borrow)]
     pub channel: &'a str,
 }
 

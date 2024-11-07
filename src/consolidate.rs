@@ -83,7 +83,7 @@ mod tests {
             exp_summary.map(|s| serde_json::from_str::<orderbook::Summary>(s).unwrap());
         let summary = consolidator
             .update(exchange.to_string(), orderbook)
-            .map(|x| x.clone());
+            .cloned();
         assert_eq!(exp_summary, summary);
     }
 

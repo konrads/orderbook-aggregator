@@ -3,10 +3,8 @@ use futures_util::future;
 use orderbook_aggregator::{
     get_ws_handler, handle_exchange_feed, ops_ws::WSOpsImpl, publish, Control, ExchangeAndSymbol,
 };
-use std::process;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{self, Duration};
-use tracing::debug;
 
 /// Server command line arguments.
 #[derive(Parser, Debug)]
@@ -28,11 +26,11 @@ struct Args {
 /// - periodic heartbeat schedule to check if the websocket handlers are still alive
 /// - control message handler to eg. exit the process in case of websocket handler failure, excessively long pin-pong
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let args = Args::parse();
     pretty_env_logger::init();
 
-    let (heartbeat_tx, _) = broadcast::channel(1);
+    let (heartbeat_tx, _) = broadcast::channel(16);
     let (control_tx, mut control_rx) = mpsc::channel(1);
     let (norm_orderbook_tx, _) = broadcast::channel(args.exchange_and_symbol.len() * 5); // able to handle 5x more updates than exchanges
 
@@ -45,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|| panic!("No handler for exchange {}", eas.exchange));
 
             let downstream_tx = norm_orderbook_tx.clone();
-            let admin_tx = control_tx.clone();
+            let control_tx = control_tx.clone();
             let heartbeat_rx = heartbeat_tx.subscribe();
             tokio::spawn(async move {
                 let mut ws_ops = WSOpsImpl::new(ws_handler.url()).await.unwrap_or_else(|e| {
@@ -58,10 +56,10 @@ async fn main() -> anyhow::Result<()> {
                     &mut ws_ops,
                     heartbeat_rx,
                     downstream_tx,
-                    admin_tx,
+                    control_tx,
                 )
                 .await
-                .unwrap_or_else(|e| panic!("WS handling error {e}"));
+                .unwrap();
             })
         })
         .collect::<Vec<_>>();
@@ -77,32 +75,41 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // control message handler task
-    let control_handle = tokio::spawn(async move {
-        if let Some(control) = control_rx.recv().await {
-            match control {
-                Control::Died(cause) => {
-                    debug!(cause, "Exiting");
-                    process::exit(1)
-                }
-                Control::PingDurationExceeded => {
-                    debug!("Exiting due to PingDurationExceeded");
-                    process::exit(2)
+    // grpc publisher task
+    let grpc_address = format!("[::]:{}", args.grpc_port);
+    let grpc_server_handle = tokio::spawn(async move {
+        publish::start_grpc_server(&grpc_address, args.orderbook_depth, norm_orderbook_tx).await
+    });
+
+    // await finish of the tasks
+    tokio::select! {
+        control = control_rx.recv() => {
+            if let Some(control) = control {
+                match control {
+                    Control::Died(cause) => {
+                        panic!("Exiting due to {cause}");
+                    }
+                    Control::PingDurationExceeded => {
+                        panic!("Exiting due to PingDurationExceeded");
+                    }
                 }
             }
         }
-    });
 
-    // grpc publisher task
-    let grpc_address = format!("[::]:{}", args.grpc_port);
-    let grpc_handle = tokio::spawn(async move {
-        publish::start_grpc_server(&grpc_address, args.orderbook_depth, norm_orderbook_tx)
-            .await
-            .unwrap()
-    });
+        _ = future::select_all(exchange_ws_handles) => {
+            panic!("Unexpected end to exchange processes");
+        }
 
-    // await finish of the first task, which will be due to an error that is propagated to the main
-    let mut all_handles = vec![heartbeat_handle, control_handle, grpc_handle];
-    all_handles.extend(exchange_ws_handles);
-    Ok(future::select_all(all_handles).await.0?)
+        _ = grpc_server_handle => {
+            panic!("Unexpected end to grpc server");
+        }
+
+        _ = heartbeat_handle => {
+            panic!("Unexpected end of heartbeat");
+        }
+
+        _ = tokio::signal::ctrl_c() => {
+            panic!("Exiting due to ctrl-c")
+        }
+    }
 }
