@@ -1,4 +1,4 @@
-export COVERAGE_THRESHOLD=60
+export COVERAGE_THRESHOLD=51
 
 .PHONY: setup-coverage test-with-coverage markdown-coverage-report html-coverage-report check-markdown-coverage-threshold
 

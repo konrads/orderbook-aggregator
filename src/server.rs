@@ -32,7 +32,8 @@ async fn main() {
 
     let (heartbeat_tx, _) = broadcast::channel(16);
     let (control_tx, mut control_rx) = mpsc::channel(1);
-    let (norm_orderbook_tx, _) = broadcast::channel(args.exchange_and_symbol.len() * 5); // able to handle 5x more updates than exchanges
+    let (norm_orderbook_tx, _norm_orderbook_rx) =
+        broadcast::channel(args.exchange_and_symbol.len() * 5); // able to handle 5x more updates than exchanges
 
     // exchange WS handler tasks
     let exchange_ws_handles = args

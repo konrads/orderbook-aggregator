@@ -11,7 +11,7 @@ mod orderbook {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(long, default_value = "http://[::1]:50051")]
+    #[arg(long, default_value = "grpc://[::1]:50051")]
     server_address: String,
     #[arg(long, default_value_t = false)]
     as_struct: bool,
